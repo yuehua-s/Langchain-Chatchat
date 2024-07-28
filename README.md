@@ -303,9 +303,9 @@ chatchat start -a
 ### Docker 部署
 
 ```shell
-docker pull chatimage/chatchat:0.3.1-c11bdbf-20240727
+docker pull chatimage/chatchat:0.3.1-cbc1e32-20240728
 
-docker pull ccr.ccs.tencentyun.com/langchain-chatchat/chatchat:0.3.1-c11bdbf-20240727 # 国内镜像
+docker pull ccr.ccs.tencentyun.com/langchain-chatchat/chatchat:0.3.1-cbc1e32-20240728 # 国内镜像
 ```
 
 > [!important]
