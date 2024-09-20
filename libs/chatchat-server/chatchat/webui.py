@@ -49,10 +49,10 @@ if __name__ == "__main__":
             # get_img_base64("logo-long-chatchat-trans-v2.png"), use_column_width=True
             get_img_base64("jingduwenhua_logo.png"), use_column_width=True
         )
-        st.caption(
-            f"""<p align="right">当前版本：{__version__}</p>""",
-            unsafe_allow_html=True,
-        )
+        # st.caption(
+        #     f"""<p align="right">当前版本：{__version__}</p>""",
+        #     unsafe_allow_html=True,
+        # )
 
         selected_page = sac.menu(
             [

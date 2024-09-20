@@ -1,3 +1,4 @@
+import rich
 from langchain_openai.chat_models import ChatOpenAI
 from langchain_core.tools import BaseTool
 from langchain_core.messages import BaseMessage, ToolMessage

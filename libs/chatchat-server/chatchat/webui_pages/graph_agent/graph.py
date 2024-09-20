@@ -1,12 +1,11 @@
 import uuid
 
+import rich
 import streamlit as st
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+import asyncio
 from streamlit_extras.bottom_container import bottom
-
 from chatchat.settings import Settings
 from chatchat.server.chat.graph_chat import create_agent_models
-
 from chatchat.webui_pages.utils import *
 from chatchat.webui_pages.dialogue.dialogue import list_graphs, list_tools
 from chatchat.server.utils import (
@@ -24,9 +23,7 @@ logger = build_logger()
 
 
 def init_conversation_id():
-    # 检查是否已经在 session_state 中存储了 UUID
     if "conversation_id" not in st.session_state:
-        # 生成一个随机的UUID并存储在 session_state 中
         st.session_state["conversation_id"] = str(uuid.uuid4())
 
 
@@ -45,7 +42,6 @@ def llm_model_setting():
     system_message = st.text_area("指令(Prompt):")
 
     if st.button("OK"):
-        # 保存状态到 session_state
         st.session_state["platform"] = platform
         st.session_state["llm_model"] = llm_model
         st.session_state["temperature"] = temperature
@@ -53,16 +49,32 @@ def llm_model_setting():
         st.rerun()
 
 
-def graph_agent_page(
-    api: ApiRequest,
-    is_lite: bool = False,
-):
-    import rich  # debug
+async def handle_user_input(user_input, graph, graph_config):
+    events = graph.astream(
+        {"messages": [("user", user_input)]}, graph_config, stream_mode="updates"
+    )
+    if events:
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            async for event in events:
+                with st.status("response ing...", expanded=True) as status:
+                    # st.markdown(event)
+                    st.json(event, expanded=True)
+                    status.update(
+                        label="response complete!", state="complete", expanded=False
+                    )
 
-    # 初始化 conversation_id
+                # Add assistant response to chat history
+                st.session_state.messages.append({"role": "assistant", "content": event})
+
+
+def run_async_task(user_input, graph, graph_config):
+    asyncio.run(handle_user_input(user_input, graph, graph_config))
+
+
+def graph_agent_page(api: ApiRequest, is_lite: bool = False):
     init_conversation_id()
 
-    # 初始化 session_state 中的键
     if "platform" not in st.session_state:
         st.session_state["platform"] = "所有"
     if "llm_model" not in st.session_state:
@@ -74,72 +86,72 @@ def graph_agent_page(
 
     with st.sidebar:
         tab1, = st.tabs(["工具设置"])
-
         with tab1:
-            # 选择 langgraph 模板
-            graph_names = list_graphs(api) + ["None"]
+            graph_names = list_graphs(api)
             selected_graph = st.selectbox(
                 "选择工作流(必选)",
                 graph_names,
-                format_func=lambda x: "None" if x == "None" else x,
+                format_func=lambda x: x,
                 key="selected_graph",
             )
-
-            # 选择工具
-            tools = list_tools(api)
-            tool_names = ["None"] + list(tools)
+            tools_list = list_tools(api)
+            tool_names = ["None"] + list(tools_list)
             selected_tools = st.multiselect(
                 "选择工具(可选)",
-                list(tools),
-                format_func=lambda x: tools[x]["title"],
+                list(tools_list),
+                format_func=lambda x: tools_list[x]["title"],
                 key="selected_tools",
             )
             selected_tool_configs = {
                 name: tool["config"]
-                for name, tool in tools.items()
+                for name, tool in tools_list.items()
                 if name in selected_tools
             }
 
-    # 选择的工具
     selected_tools_configs = list(selected_tool_configs)
 
     st.title("自媒体文章生成")
     with st.chat_message("assistant"):
         st.write("Hello 👋, 我是自媒体文章生成 Agent, 试着向我提问.")
 
-    # chat input
     with bottom():
-        cols = st.columns([1, 0.2, 15,  1])
+        cols = st.columns([1, 0.2, 15, 1])
         if cols[0].button(":gear:", help="模型配置"):
             llm_model_setting()
         if cols[-1].button(":wastebasket:", help="清空对话"):
-            st.session_state["message"] = []
+            st.session_state["messages"] = []
             st.rerun()
-        # Accept user input
         user_input = cols[2].chat_input("请输入你的需求. 如: 请你帮我生成一篇自媒体文章.")
 
     # debug
-    with st.status("debug info", expanded=True):
-        st.write("当前 llm 平台:", st.session_state["platform"])
-        st.write("当前 llm 模型:", st.session_state["llm_model"])
-        st.write("当前 llm 温度:", st.session_state["temperature"])
-        st.write("当前系统 prompt:", st.session_state["system_message"])
-        st.write("当前 tools:", selected_tools_configs)
-        st.write("当前会话的 id:", st.session_state["conversation_id"])
-        if st.session_state.selected_graph == "文章生成":
-            st.write("当前工作流:", "article_generation")
-        elif st.session_state.selected_graph == "通用机器人":
-            st.write("当前工作流:", "base_graph")
+    print("当前 llm 平台:", st.session_state["platform"])
+    print("当前 llm 模型:", st.session_state["llm_model"])
+    print("当前 llm 温度:", st.session_state["temperature"])
+    print("当前系统 prompt:", st.session_state["system_message"])
+    print("当前 tools:", selected_tools_configs)
+    print("当前会话的 id:", st.session_state["conversation_id"])
+    if st.session_state.selected_graph == "文章生成":
+        print("当前工作流:", "article_generation")
+    elif st.session_state.selected_graph == "通用机器人":
+        print("当前工作流:", "base_graph")
 
+    # get_tool() 是所有工具的名称和对象的 dict 的列表
     all_tools = get_tool().values()
+
     tools = [tool for tool in all_tools if tool.name in selected_tools_configs]
+    # 为保证调用效果, 如果用户没有选择任何 tool, 就默认选择互联网搜索工具
+    if len(tools) == 0:
+        search_internet = get_tool(name="search_internet")
+        tools.append(search_internet)
+
+    rich.print(tools)
+
     llm_model = st.session_state["llm_model"]
     llm = create_agent_models(configs=None,
                               model=llm_model,
                               max_tokens=None,
                               temperature=st.session_state["temperature"],
                               stream=True)
-
     rich.print(llm)
 
     if st.session_state.selected_graph == "文章生成":
@@ -163,37 +175,19 @@ def graph_agent_page(
         "recursion_limit": get_recursion_limit()
     }
 
-    rich.print(graph)
+    # rich.print(graph)
 
-    with st.status("debug graph info", expanded=True):
-        st.write("当前 graph:", graph)
-        st.write("当前 graph_config:", graph_config)
-
-    # Initialize chat history
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display chat messages from history on app rerun
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
     if user_input:
-        # Display user message in chat message container
         with st.chat_message("user"):
             st.markdown(user_input)
-        # Add user message to chat history
-        st.session_state.messages.append(HumanMessage(content=user_input))
+        st.session_state.messages.append({"role": "user", "content": user_input})
 
-        # 对接 langgraph
-        events = graph.stream(
-            {"messages": [("user", user_input)]}, graph_config, stream_mode="updates"
-        )
-        if events:
-            # Display assistant response in chat message container
-            with st.chat_message("assistant"):
-                for event in events:
-                    st.markdown(event["messages"])
-                    # st.json(response, expanded=True)
-                # Add assistant response to chat history
-                st.session_state.messages.append(AIMessage(content=event["messages"]))
+        # Run the async function in a synchronous context
+        run_async_task(user_input, graph, graph_config)
