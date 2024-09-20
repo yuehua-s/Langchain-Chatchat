@@ -490,13 +490,14 @@ class ToolSettings(BaseFileSettings):
                                       json_file=CHATCHAT_ROOT / "tool_settings.json",
                                       extra="allow")
 
-    DEFAULT_GRAPH: str = "base_graph"
+    DEFAULT_GRAPH: str = "article_generation"
     """默认使用的 graph"""
 
     SUPPORT_GRAPHS: t.List[str] = [
+        "article_generation",
         "base_graph",
-        "plan_and_execute",
-        "reflexion",
+        # "plan_and_execute",
+        # "reflexion",
     ]
     """支持的 graph"""
 

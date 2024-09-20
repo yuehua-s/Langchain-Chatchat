@@ -11,12 +11,23 @@ __all__ = [
     "State",
     "Response",
     "async_history_manager",
-    "serialize_content"
+    "serialize_content",
+    "human_feedback",
+    "break_point"
 ]
 
 _GRAPHS_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
 
+# class State(TypedDict):
+#     """
+#     定义一个基础 State 供 各类 graph 继承, 其中:
+#     1. messages 为所有 graph 的核心信息队列, 所有聊天工作流均应该将关键信息补充到此队列中;
+#     2. history 为所有工作流单次启动时获取 history_len 的 messages 所用(节约成本, 及防止单轮对话 tokens 占用长度达到 llm 支持上限),
+#     history 中的信息理应是可以被丢弃的.
+#     """
+#     messages: Annotated[List[BaseMessage], add_messages]
+#     history: Optional[List[BaseMessage]]
 class State(TypedDict):
     """
     定义一个基础 State 供 各类 graph 继承, 其中:
@@ -26,6 +37,7 @@ class State(TypedDict):
     """
     messages: Annotated[List[BaseMessage], add_messages]
     history: Optional[List[BaseMessage]]
+    user_feedback: Optional[str]
 
 
 class Response(TypedDict):
@@ -85,6 +97,26 @@ async def async_history_manager(state: T, history_len: int, exclude_types: Optio
         return state
     except Exception as e:
         raise Exception(f"Filtering messages error: {e}")
+
+
+# 用来暂停 langgraph
+async def break_point(state: T) -> T:
+    print("\n")
+    print("---break_point---")
+    print("\n")
+    return state
+
+
+# 获取用户反馈后的处理
+async def human_feedback(state: T) -> T:
+    # 这里可以添加逻辑来处理用户反馈
+    # 例如，等待用户输入并更新 state["user_feedback"]
+    print("\n")
+    print("---human_feedback---")
+    import rich
+    rich.print(state)
+    print("\n")
+    return state
 
 
 def regist_graph(name: str, input_handler: Type[InputHandler], event_handler: Type[EventHandler]) -> Callable:

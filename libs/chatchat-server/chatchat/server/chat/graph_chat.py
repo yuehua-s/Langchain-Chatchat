@@ -26,7 +26,7 @@ from chatchat.server.utils import (
 logger = build_logger()
 
 
-def _create_agent_models(configs, model, max_tokens, temperature, stream) -> ChatOpenAI:
+def create_agent_models(configs, model, max_tokens, temperature, stream) -> ChatOpenAI:
     # Settings.model_settings.LLM_MODEL_CONFIG 数据结构 与 UI 传入 configs 数据结构不同, 故分开处理
     if not configs:
         configs = Settings.model_settings.LLM_MODEL_CONFIG
@@ -67,11 +67,11 @@ async def graph_chat(
         all_tools = get_tool().values()
         tools = [tool for tool in all_tools if tool.name in tool_config]
         try:
-            llm = _create_agent_models(configs=chat_model_config,
-                                       model=model,
-                                       max_tokens=max_tokens,
-                                       temperature=temperature,
-                                       stream=stream)
+            llm = create_agent_models(configs=chat_model_config,
+                                      model=model,
+                                      max_tokens=max_tokens,
+                                      temperature=temperature,
+                                      stream=stream)
             # 检查 llm 是否创建成功
             if llm is None:
                 raise Exception(f"failed to create ChatOpenAI for model: {model}.")
