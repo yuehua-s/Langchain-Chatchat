@@ -1,10 +1,13 @@
 import uuid
+import io
 
 import rich
 import streamlit as st
 import asyncio
 from streamlit_extras.bottom_container import bottom
 from chatchat.settings import Settings
+from PIL import Image
+
 from chatchat.server.chat.graph_chat import create_agent_models
 from chatchat.webui_pages.utils import *
 from chatchat.webui_pages.dialogue.dialogue import list_graphs, list_tools
@@ -185,6 +188,10 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         },
         "recursion_limit": get_recursion_limit()
     }
+
+    # 绘制流程图
+    graph_png_image = graph.get_graph().draw_mermaid_png()
+    st.sidebar.image(graph_png_image, caption="工作流流程图", use_column_width=True)
 
     # 创建 streamlit 消息缓存
     if "messages" not in st.session_state:
