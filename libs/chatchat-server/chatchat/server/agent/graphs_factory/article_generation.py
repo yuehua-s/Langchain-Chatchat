@@ -1,4 +1,5 @@
-import rich
+from typing import Optional
+
 from langchain_openai.chat_models import ChatOpenAI
 from langchain_core.tools import BaseTool
 from langchain_core.messages import BaseMessage, ToolMessage
@@ -12,11 +13,21 @@ from .graphs_registry import regist_graph, InputHandler, EventHandler, State, as
 logger = build_logger()
 
 
+class ArticleGenerationState(State):
+    """
+    定义一个基础 State 供 各类 graph 继承, 其中:
+    1. messages 为所有 graph 的核心信息队列, 所有聊天工作流均应该将关键信息补充到此队列中;
+    2. history 为所有工作流单次启动时获取 history_len 的 messages 所用(节约成本, 及防止单轮对话 tokens 占用长度达到 llm 支持上限),
+    history 中的信息理应是可以被丢弃的.
+    """
+    user_feedback: Optional[str]
+
+
 class ArticleGenerationEventHandler(EventHandler):
     def __init__(self):
         pass
 
-    def handle_event(self, node: str, events: State) -> BaseMessage:
+    def handle_event(self, node: str, events: ArticleGenerationState) -> BaseMessage:
         """
         event example:
         {
@@ -45,15 +56,15 @@ def article_generation(llm: ChatOpenAI, tools: list[BaseTool], history_len: int)
 
     memory = get_graph_memory()
 
-    graph_builder = StateGraph(State)
+    graph_builder = StateGraph(ArticleGenerationState)
 
     llm_with_tools = llm.bind_tools(tools)
 
-    async def history_manager(state: State) -> State:
+    async def history_manager(state: ArticleGenerationState) -> ArticleGenerationState:
         state = await async_history_manager(state, history_len)
         return state
 
-    async def chatbot(state: State) -> State:
+    async def chatbot(state: ArticleGenerationState) -> ArticleGenerationState:
         # ToolNode 默认只将结果追加到 messages 队列中, 所以需要手动在 history 中追加 ToolMessage 结果, 否则报错如下:
         # Error code: 400 -
         # {

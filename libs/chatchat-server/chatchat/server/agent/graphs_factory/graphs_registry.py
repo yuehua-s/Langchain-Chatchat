@@ -19,15 +19,6 @@ __all__ = [
 _GRAPHS_REGISTRY: Dict[str, Dict[str, Any]] = {}
 
 
-# class State(TypedDict):
-#     """
-#     定义一个基础 State 供 各类 graph 继承, 其中:
-#     1. messages 为所有 graph 的核心信息队列, 所有聊天工作流均应该将关键信息补充到此队列中;
-#     2. history 为所有工作流单次启动时获取 history_len 的 messages 所用(节约成本, 及防止单轮对话 tokens 占用长度达到 llm 支持上限),
-#     history 中的信息理应是可以被丢弃的.
-#     """
-#     messages: Annotated[List[BaseMessage], add_messages]
-#     history: Optional[List[BaseMessage]]
 class State(TypedDict):
     """
     定义一个基础 State 供 各类 graph 继承, 其中:
@@ -37,7 +28,6 @@ class State(TypedDict):
     """
     messages: Annotated[List[BaseMessage], add_messages]
     history: Optional[List[BaseMessage]]
-    user_feedback: Optional[str]
 
 
 class Response(TypedDict):

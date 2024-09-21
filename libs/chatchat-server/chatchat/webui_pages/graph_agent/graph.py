@@ -27,6 +27,36 @@ def init_conversation_id():
         st.session_state["conversation_id"] = str(uuid.uuid4())
 
 
+def extract_node_and_response(data):
+    # 获取第一个键值对，作为 node
+    if not data:
+        raise ValueError("数据为空")
+
+    # 获取第一个键及其对应的值
+    node = next(iter(data))
+    response = data[node]
+
+    return node, response
+
+
+async def handle_user_input(graph_input, graph, graph_config):
+    events = graph.astream(graph_input, graph_config, stream_mode="updates")
+    if events:
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            async for event in events:
+                node, response = extract_node_and_response(event)
+                if node == "history_manager":  # history_manager node 为内部实现, 不外显
+                    continue
+                with st.status(node, expanded=True) as status:
+                    st.json(response, expanded=True)
+                    status.update(
+                        label=node, state="complete", expanded=False
+                    )
+                # Add assistant response to chat history
+                st.session_state.messages.append({"role": "assistant", "content": event})
+
+
 @st.experimental_dialog("模型配置", width="large")
 def llm_model_setting():
     cols = st.columns(3)
@@ -49,32 +79,11 @@ def llm_model_setting():
         st.rerun()
 
 
-async def handle_user_input(user_input, graph, graph_config):
-    events = graph.astream(
-        {"messages": [("user", user_input)]}, graph_config, stream_mode="updates"
-    )
-    if events:
-        # Display assistant response in chat message container
-        with st.chat_message("assistant"):
-            async for event in events:
-                with st.status("response ing...", expanded=True) as status:
-                    # st.markdown(event)
-                    st.json(event, expanded=True)
-                    status.update(
-                        label="response complete!", state="complete", expanded=False
-                    )
-
-                # Add assistant response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": event})
-
-
-def run_async_task(user_input, graph, graph_config):
-    asyncio.run(handle_user_input(user_input, graph, graph_config))
-
-
 def graph_agent_page(api: ApiRequest, is_lite: bool = False):
+    # 初始化会话 id
     init_conversation_id()
 
+    # 初始化模型配置
     if "platform" not in st.session_state:
         st.session_state["platform"] = "所有"
     if "llm_model" not in st.session_state:
@@ -137,28 +146,29 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
 
     # get_tool() 是所有工具的名称和对象的 dict 的列表
     all_tools = get_tool().values()
-
     tools = [tool for tool in all_tools if tool.name in selected_tools_configs]
     # 为保证调用效果, 如果用户没有选择任何 tool, 就默认选择互联网搜索工具
     if len(tools) == 0:
         search_internet = get_tool(name="search_internet")
         tools.append(search_internet)
+    # rich.print(tools)  # debug
 
-    rich.print(tools)
-
+    # 创建 llm 实例
+    # todo: max_tokens 这里有问题, None 应该是不限制, 但是目前 llm 结果为 4096
     llm_model = st.session_state["llm_model"]
     llm = create_agent_models(configs=None,
                               model=llm_model,
                               max_tokens=None,
                               temperature=st.session_state["temperature"],
                               stream=True)
-    rich.print(llm)
+    # rich.print(llm)  # debug
 
     if st.session_state.selected_graph == "文章生成":
         graph_name = "article_generation"
     else:
         graph_name = "base_graph"
 
+    # 创建 langgraph 实例
     graph = get_graph_instance(
         name=graph_name,
         llm=llm,
@@ -168,6 +178,7 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
     if not graph:
         raise ValueError(f"Graph '{graph_name}' is not registered.")
 
+    # langgraph 配置文件
     graph_config = {
         "configurable": {
             "thread_id": st.session_state["conversation_id"]
@@ -175,19 +186,19 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         "recursion_limit": get_recursion_limit()
     }
 
-    # rich.print(graph)
-
+    # 创建 streamlit 消息缓存
     if "messages" not in st.session_state:
         st.session_state.messages = []
-
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
+    # 对话主流程
     if user_input:
         with st.chat_message("user"):
             st.markdown(user_input)
         st.session_state.messages.append({"role": "user", "content": user_input})
 
         # Run the async function in a synchronous context
-        run_async_task(user_input, graph, graph_config)
+        graph_input = {"messages": [("user", user_input)]}
+        asyncio.run(handle_user_input(graph_input, graph, graph_config))
