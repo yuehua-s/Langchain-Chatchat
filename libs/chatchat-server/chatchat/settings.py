@@ -368,7 +368,7 @@ class ApiModelSettings(BaseFileSettings):
             "llm_model": {
                 "model": "",
                 "temperature": 0.9,
-                "max_tokens": 4096,
+                "max_tokens": None,
                 "history_len": 10,
                 "prompt_name": "default",
                 "callbacks": True,
@@ -376,7 +376,7 @@ class ApiModelSettings(BaseFileSettings):
             "action_model": {
                 "model": "",
                 "temperature": 0.01,
-                "max_tokens": 4096,
+                "max_tokens": None,
                 "history_len": 10,
                 "prompt_name": "ChatGLM3",
                 "callbacks": True,

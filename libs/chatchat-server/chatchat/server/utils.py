@@ -255,6 +255,8 @@ def get_ChatOpenAI(
         **kwargs: Any,
 ) -> ChatOpenAI:
     model_info = get_model_info(model_name)
+    if max_tokens == 'None':
+        max_tokens = None
     params = dict(
         streaming=streaming,
         verbose=verbose,
@@ -1030,6 +1032,33 @@ def set_graph_memory(memory_type: Literal["memory", "sqlite", "postgres", None] 
 def get_graph_memory():
     global _AGENT_MEMORY  # 声明使用全局 memory
     return _AGENT_MEMORY
+
+
+def get_st_graph_memory(memory_type: Literal["memory", "sqlite", "postgres", None] = None) -> Any:
+    import sqlalchemy as sa
+
+    if memory_type is None:
+        memory_type = Settings.tool_settings.GRAPH_MEMORY_TYPE
+    memory_saver = None  # 给 memory_saver 赋一个默认值
+
+    if memory_type == "memory":
+        from langgraph.checkpoint.memory import MemorySaver
+        memory_saver = MemorySaver()
+    elif memory_type == "sqlite":
+        import aiosqlite
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        conn = aiosqlite.connect("langgraph_checkpoints.sqlite")
+        memory_saver = AsyncSqliteSaver(conn)
+    elif memory_type == "postgres":
+        from langgraph.checkpoint.postgres import PostgresSaver
+        engine = sa.create_engine(Settings.basic_settings.SQLALCHEMY_DATABASE_URI)
+        conn = engine.connect().connection
+        memory_saver = PostgresSaver(conn)
+
+    if memory_saver is None:
+        raise ValueError("Invalid memory_type provided. Must be 'memory', 'sqlite', or 'postgres'.")
+
+    return memory_saver
 
 
 if __name__ == "__main__":

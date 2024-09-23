@@ -7,6 +7,9 @@
 !/libs/chatchat-server/chatchat/data/knowledge_base/samples
 /libs/chatchat-server/chatchat/data/knowledge_base/samples/vector_store
 !/libs/chatchat-server/chatchat/data/nltk_data
+/libs/chatchat-server/langgraph_checkpoints.sqlite
+/libs/chatchat-server/langgraph_checkpoints.sqlite-shm
+/libs/chatchat-server/langgraph_checkpoints.sqlite-wal
 config/
 .vscode/
 
