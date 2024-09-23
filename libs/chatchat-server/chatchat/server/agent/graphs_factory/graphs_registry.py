@@ -3,6 +3,9 @@ from abc import ABC, abstractmethod
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage, ToolMessage, AIMessage, filter_messages
 from langchain_core.pydantic_v1 import BaseModel
+from chatchat.server.utils import build_logger
+
+logger = build_logger()
 
 __all__ = [
     "regist_graph",
@@ -91,9 +94,7 @@ async def async_history_manager(state: T, history_len: int, exclude_types: Optio
 
 # 用来暂停 langgraph
 async def break_point(state: T) -> T:
-    print("\n")
-    print("---break_point---")
-    print("\n")
+    logger.info("this is break_point node")
     return state
 
 
@@ -101,11 +102,9 @@ async def break_point(state: T) -> T:
 async def human_feedback(state: T) -> T:
     # 这里可以添加逻辑来处理用户反馈
     # 例如，等待用户输入并更新 state["user_feedback"]
-    print("\n")
-    print("---human_feedback---")
+    logger.info("this is human_feedback node")
     import rich
     rich.print(state)
-    print("\n")
     return state
 
 

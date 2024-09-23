@@ -2,10 +2,10 @@ from langchain_openai.chat_models import ChatOpenAI
 from langchain_core.tools import BaseTool
 from langchain_core.messages import BaseMessage, ToolMessage
 from langgraph.graph import StateGraph
-from langgraph.graph.graph import CompiledGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from chatchat.server.utils import get_graph_memory, build_logger
+from chatchat.server.utils import build_logger, get_st_graph_memory
 from .graphs_registry import regist_graph, InputHandler, EventHandler, State, async_history_manager
 
 logger = build_logger()
@@ -33,7 +33,7 @@ class BaseGraphEventHandler(EventHandler):
 @regist_graph(name="base_graph",
               input_handler=InputHandler,
               event_handler=BaseGraphEventHandler)
-def base_graph(llm: ChatOpenAI, tools: list[BaseTool], history_len: int) -> CompiledGraph:
+def base_graph(llm: ChatOpenAI, tools: list[BaseTool], history_len: int) -> CompiledStateGraph:
     """
     description: https://langchain-ai.github.io/langgraph/tutorials/introduction/
     """
@@ -42,7 +42,7 @@ def base_graph(llm: ChatOpenAI, tools: list[BaseTool], history_len: int) -> Comp
     if not all(isinstance(tool, BaseTool) for tool in tools):
         raise TypeError("All items in tools must be instances of BaseTool")
 
-    memory = get_graph_memory()
+    memory = get_st_graph_memory()
 
     graph_builder = StateGraph(State)
 

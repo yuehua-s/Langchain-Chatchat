@@ -7,8 +7,14 @@ from langgraph.graph import StateGraph
 from langgraph.graph.graph import CompiledGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from chatchat.server.utils import get_graph_memory, build_logger
-from .graphs_registry import regist_graph, InputHandler, EventHandler, State, async_history_manager
+from chatchat.server.utils import build_logger, get_st_graph_memory
+from .graphs_registry import (
+    regist_graph,
+    InputHandler,
+    EventHandler,
+    State,
+    async_history_manager,
+)
 
 logger = build_logger()
 
@@ -21,6 +27,28 @@ class ArticleGenerationState(State):
     history 中的信息理应是可以被丢弃的.
     """
     user_feedback: Optional[str]
+
+
+# 用来暂停 langgraph
+async def article_generation_init_break_point(state: ArticleGenerationState) -> ArticleGenerationState:
+    logger.info("This is the article_generation_INIT_break_point node and now i will break this graph.")
+    return state
+
+
+# 用来暂停 langgraph
+async def article_generation_repeat_break_point(state: ArticleGenerationState) -> ArticleGenerationState:
+    logger.info("This is the article_generation_REPEAT_break_point node and now i will break this graph.")
+    return state
+
+
+# 获取用户反馈后的处理
+async def human_feedback(state: ArticleGenerationState) -> ArticleGenerationState:
+    # 这里可以添加逻辑来处理用户反馈
+    # 例如，等待用户输入并更新 state["user_feedback"]
+    logger.info("this is the human_feedback node.")
+    import rich
+    rich.print(state)
+    return state
 
 
 class ArticleGenerationEventHandler(EventHandler):
@@ -54,7 +82,10 @@ def article_generation(llm: ChatOpenAI, tools: list[BaseTool], history_len: int)
     if not all(isinstance(tool, BaseTool) for tool in tools):
         raise TypeError("All items in tools must be instances of BaseTool")
 
-    memory = get_graph_memory()
+    import rich
+    memory = get_st_graph_memory()
+    print("this is memory_base_graph_new:")
+    rich.print(memory)
 
     graph_builder = StateGraph(ArticleGenerationState)
 
@@ -89,15 +120,19 @@ def article_generation(llm: ChatOpenAI, tools: list[BaseTool], history_len: int)
     graph_builder.add_node("history_manager", history_manager)
     graph_builder.add_node("chatbot", chatbot)
     graph_builder.add_node("tools", tool_node)
+    graph_builder.add_node("article_generation_init_break_point", article_generation_init_break_point)
+    graph_builder.add_node("human_feedback", human_feedback)
 
     graph_builder.set_entry_point("history_manager")
-    graph_builder.add_edge("history_manager", "chatbot")
+    graph_builder.add_edge("history_manager", "article_generation_init_break_point")
+    graph_builder.add_edge("article_generation_init_break_point", "human_feedback")
+    graph_builder.add_edge("human_feedback", "chatbot")
     graph_builder.add_conditional_edges(
         "chatbot",
         tools_condition,
     )
     graph_builder.add_edge("tools", "chatbot")
 
-    graph = graph_builder.compile(checkpointer=memory)
+    graph = graph_builder.compile(checkpointer=memory, interrupt_after=["article_generation_init_break_point"])
 
     return graph

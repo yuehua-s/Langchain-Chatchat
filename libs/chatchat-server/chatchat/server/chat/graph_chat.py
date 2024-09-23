@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from typing import AsyncIterable
+from typing import AsyncIterable, Any
 
 from fastapi import Body
 from langchain_openai import ChatOpenAI
@@ -26,7 +26,11 @@ from chatchat.server.utils import (
 logger = build_logger()
 
 
-def create_agent_models(configs, model, max_tokens, temperature, stream) -> ChatOpenAI:
+def create_agent_models(configs: Any,
+                        model: str,
+                        max_tokens: Any,
+                        temperature: float,
+                        stream: Any) -> ChatOpenAI:
     # Settings.model_settings.LLM_MODEL_CONFIG 数据结构 与 UI 传入 configs 数据结构不同, 故分开处理
     if not configs:
         configs = Settings.model_settings.LLM_MODEL_CONFIG
