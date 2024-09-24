@@ -16,9 +16,8 @@ from chatchat.server.utils import (
     get_config_platforms,
     get_default_llm,
     get_history_len,
-    get_recursion_limit,
     get_graph_instance,
-    get_tool, get_graph_memory,
+    get_tool,
 )
 
 logger = build_logger()
@@ -202,7 +201,7 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
     if len(tools) == 0:
         search_internet = get_tool(name="search_internet")
         tools.append(search_internet)
-    rich.print(tools)
+    # rich.print(tools)
 
     # 创建 llm 实例
     # todo: max_tokens 这里有问题, None 应该是不限制, 但是目前 llm 结果为 4096
@@ -270,46 +269,77 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         graph_input = {"messages": [("user", user_input)]}
         asyncio.run(handle_user_input(graph_input=graph_input, graph=graph, graph_config=graph_config))
 
-        # print("\n")
-        # print(" ✅ ")
-        # snapshot = graph.aget_state(graph_config)
-        # print("This is snapshot:")
-        # rich.print(snapshot)
-        # print(" ✅ ✅ ")
-        # print("\n")
-
     if graph_name == "article_generation":
         # 处理用户输入的链接
-        article_links_list = [link.strip() for link in st.session_state["article_links"].split('\n') if link.strip()]
-        image_links_list = [link.strip() for link in st.session_state["image_links"].split('\n') if link.strip()]
-        st.session_state["article_links_list"] = article_links_list
-        st.session_state["image_links_list"] = image_links_list
-        article_links_list = st.session_state["article_links_list"]
-        image_links_list = st.session_state["image_links_list"]
-        logger.info(f"当前文章链接-处理后: {article_links_list}")
-        logger.info(f"当前图片链接-处理后: {image_links_list}")
+        # article_links_list = [link.strip() for link in st.session_state["article_links"].split('\n') if link.strip()]
+        # image_links_list = [link.strip() for link in st.session_state["image_links"].split('\n') if link.strip()]
+        # st.session_state["article_links_list"] = article_links_list
+        # st.session_state["image_links_list"] = image_links_list
+        # article_links_list = st.session_state["article_links_list"]
+        # image_links_list = st.session_state["image_links_list"]
+        # logger.info(f"当前文章链接-处理后: {article_links_list}")
+        # logger.info(f"当前图片链接-处理后: {image_links_list}")
 
         is_article_generation_init_break_point = st.session_state["article_generation_init_break_point"]
         logger.info(f"是否断点: {str(is_article_generation_init_break_point)}")
 
-        user_input = (f"article_links_list: {article_links_list}"
-                      f"image_links_list: {image_links_list}")
-        message_input = {
-            "messages": HumanMessage(content=user_input),
-            "user_feedback": user_input,
-        }
+        # user_input = (f"article_links_list: {article_links_list}"
+        #               f"image_links_list: {image_links_list}")
+
+        # message_input = {
+        #     "article_links": user_input,
+        #     "image_links": user_input,
+        #     "llm": user_input,
+        #     "article": user_input,
+        #     "user_feedback": user_input,
+        # }
+
+        # if st.session_state["article_generation_init_break_point"]:
+        #
+        #     message_input = {
+        #         "article_links": st.session_state["article_links"],
+        #         "image_links": st.session_state["image_links"],
+        #     }
+        #     rich.print(message_input)
+        #
+        #     # graph.aupdate_state(config=graph_config,
+        #     #                     values=message_input,
+        #     #                     as_node="article_generation_init_break_point")
+        #     graph.aupdate_state(graph_config,
+        #                         message_input,
+        #                         as_node="article_generation_init_break_point")
+        #
+        #     asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
 
         if st.session_state["article_generation_init_break_point"]:
-            print("--State before update--")
-            state = graph.aget_state(graph_config)
-            rich.print(state)
+            async def update_state():
+                print("--State before update--")
 
-            graph.aupdate_state(config=graph_config,
-                                values=message_input,
-                                as_node="article_generation_init_break_point")
+                # 使用异步函数来获取状态历史
+                state_history = []
+                async for state in graph.aget_state_history(graph_config):
+                    state_history.append(state)
+                rich.print(state_history)
 
-            print("--State after update--")
-            state = graph.aget_state(graph_config)
-            rich.print(state)
+                message_input = {
+                    "article_links": st.session_state["article_links"],
+                    "image_links": st.session_state["image_links"],
+                }
+                rich.print(message_input)
 
-            # asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
+                # 更新状态
+                await graph.aupdate_state(config=graph_config,
+                                          values=message_input,
+                                          as_node="article_generation_init_break_point")
+
+                print("--State after update--")
+
+                # 再次打印状态历史
+                state_history = []
+                async for state in graph.aget_state_history(graph_config):
+                    state_history.append(state)
+                rich.print(state_history)
+
+            # 运行异步函数
+            asyncio.run(update_state())
+            asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))

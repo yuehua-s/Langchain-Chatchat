@@ -26,6 +26,10 @@ class ArticleGenerationState(State):
     2. history 为所有工作流单次启动时获取 history_len 的 messages 所用(节约成本, 及防止单轮对话 tokens 占用长度达到 llm 支持上限),
     history 中的信息理应是可以被丢弃的.
     """
+    article_links: Optional[str]
+    image_links: Optional[str]
+    llm: Optional[str]
+    article: Optional[str]
     user_feedback: Optional[str]
 
 
@@ -84,7 +88,6 @@ def article_generation(llm: ChatOpenAI, tools: list[BaseTool], history_len: int)
 
     import rich
     memory = get_st_graph_memory()
-    print("this is memory_base_graph_new:")
     rich.print(memory)
 
     graph_builder = StateGraph(ArticleGenerationState)
