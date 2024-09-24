@@ -340,6 +340,5 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
                     state_history.append(state)
                 rich.print(state_history)
 
-            # 运行异步函数
             asyncio.run(update_state())
             asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
