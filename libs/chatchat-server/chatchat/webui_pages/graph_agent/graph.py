@@ -1,5 +1,6 @@
 import uuid
 import asyncio
+import rich
 
 import streamlit as st
 from langchain_core.messages import HumanMessage
@@ -68,6 +69,29 @@ async def handle_user_input(
                 st.session_state.messages.append({"role": "assistant", "content": event})
 
 
+async def update_state(graph: CompiledStateGraph, graph_config: Dict, update_message: Dict):
+    rich.print(update_message)
+
+    # print("--State before update--")
+    # # 使用异步函数来获取状态历史
+    # state_history = []
+    # async for state in graph.aget_state_history(graph_config):
+    #     state_history.append(state)
+    # rich.print(state_history)
+
+    # 更新状态
+    await graph.aupdate_state(config=graph_config,
+                              values=update_message,
+                              as_node="article_generation_init_break_point")
+
+    # print("--State after update--")
+    # # 再次打印状态历史
+    # state_history = []
+    # async for state in graph.aget_state_history(graph_config):
+    #     state_history.append(state)
+    # rich.print(state_history)
+
+
 @st.dialog("模型配置", width="large")
 def llm_model_setting():
     cols = st.columns(3)
@@ -96,6 +120,7 @@ def article_generation_init_setting():
     if st.button("确认"):
         st.session_state["article_links"] = article_links
         st.session_state["image_links"] = image_links
+        # 将 article_generation_init_break_point 状态扭转为 True, 后续将进行 update_state 动作
         st.session_state["article_generation_init_break_point"] = True
 
         user_input = (f"文章链接: {article_links}\n"
@@ -270,75 +295,13 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         asyncio.run(handle_user_input(graph_input=graph_input, graph=graph, graph_config=graph_config))
 
     if graph_name == "article_generation":
-        # 处理用户输入的链接
-        # article_links_list = [link.strip() for link in st.session_state["article_links"].split('\n') if link.strip()]
-        # image_links_list = [link.strip() for link in st.session_state["image_links"].split('\n') if link.strip()]
-        # st.session_state["article_links_list"] = article_links_list
-        # st.session_state["image_links_list"] = image_links_list
-        # article_links_list = st.session_state["article_links_list"]
-        # image_links_list = st.session_state["image_links_list"]
-        # logger.info(f"当前文章链接-处理后: {article_links_list}")
-        # logger.info(f"当前图片链接-处理后: {image_links_list}")
-
         is_article_generation_init_break_point = st.session_state["article_generation_init_break_point"]
         logger.info(f"是否断点: {str(is_article_generation_init_break_point)}")
 
-        # user_input = (f"article_links_list: {article_links_list}"
-        #               f"image_links_list: {image_links_list}")
-
-        # message_input = {
-        #     "article_links": user_input,
-        #     "image_links": user_input,
-        #     "llm": user_input,
-        #     "article": user_input,
-        #     "user_feedback": user_input,
-        # }
-
-        # if st.session_state["article_generation_init_break_point"]:
-        #
-        #     message_input = {
-        #         "article_links": st.session_state["article_links"],
-        #         "image_links": st.session_state["image_links"],
-        #     }
-        #     rich.print(message_input)
-        #
-        #     # graph.aupdate_state(config=graph_config,
-        #     #                     values=message_input,
-        #     #                     as_node="article_generation_init_break_point")
-        #     graph.aupdate_state(graph_config,
-        #                         message_input,
-        #                         as_node="article_generation_init_break_point")
-        #
-        #     asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
-
         if st.session_state["article_generation_init_break_point"]:
-            async def update_state():
-                print("--State before update--")
-
-                # 使用异步函数来获取状态历史
-                state_history = []
-                async for state in graph.aget_state_history(graph_config):
-                    state_history.append(state)
-                rich.print(state_history)
-
-                message_input = {
-                    "article_links": st.session_state["article_links"],
-                    "image_links": st.session_state["image_links"],
-                }
-                rich.print(message_input)
-
-                # 更新状态
-                await graph.aupdate_state(config=graph_config,
-                                          values=message_input,
-                                          as_node="article_generation_init_break_point")
-
-                print("--State after update--")
-
-                # 再次打印状态历史
-                state_history = []
-                async for state in graph.aget_state_history(graph_config):
-                    state_history.append(state)
-                rich.print(state_history)
-
-            asyncio.run(update_state())
+            update_message = {
+                "article_links": st.session_state["article_links"],
+                "image_links": st.session_state["image_links"],
+            }
+            asyncio.run(update_state(graph=graph, graph_config=graph_config, update_message=update_message))
             asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
