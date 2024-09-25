@@ -50,6 +50,15 @@ async def human_feedback(state: ArticleGenerationState) -> ArticleGenerationStat
     # 这里可以添加逻辑来处理用户反馈
     # 例如，等待用户输入并更新 state["user_feedback"]
     logger.info("this is the human_feedback node.")
+    # 处理用户输入的链接
+    # article_links_list = [link.strip() for link in st.session_state["article_links"].split('\n') if link.strip()]
+    # image_links_list = [link.strip() for link in st.session_state["image_links"].split('\n') if link.strip()]
+    # st.session_state["article_links_list"] = article_links_list
+    # st.session_state["image_links_list"] = image_links_list
+    # article_links_list = st.session_state["article_links_list"]
+    # image_links_list = st.session_state["image_links_list"]
+    # logger.info(f"当前文章链接-处理后: {article_links_list}")
+    # logger.info(f"当前图片链接-处理后: {image_links_list}")
     import rich
     rich.print(state)
     return state
