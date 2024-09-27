@@ -269,7 +269,7 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         },
     }
 
-    rich.print(graph_config)
+    logger.info(f"graph: '{graph_name}', configurable: '{graph_config}'")
 
     # 绘制流程图
     graph_png_image = graph.get_graph().draw_mermaid_png()

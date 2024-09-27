@@ -222,7 +222,7 @@ def article_generation(llm: ChatOpenAI, tools: list[BaseTool], history_len: int)
         raise TypeError("All items in tools must be instances of BaseTool")
 
     memory = get_st_graph_memory()
-    rich.print(memory)
+    # rich.print(memory)
 
     graph_builder = StateGraph(ArticleGenerationState)
 
