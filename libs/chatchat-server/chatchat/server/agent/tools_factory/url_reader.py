@@ -24,7 +24,6 @@ def url_reader(
                         "If the URL is inaccessible or the content cannot be parsed, return an appropriate error message."),
 ):
     """Use this tool to get the clear content of a URL."""
-
     tool_config = get_tool_config("url_reader")
     timeout = tool_config.get("timeout")
 
@@ -32,6 +31,7 @@ def url_reader(
     url_pattern = r'http[s]?://[a-zA-Z0-9./?&=_%#-]+'
     match = re.search(url_pattern, url)
     url = match.group(0) if match else None
+    print(f"url_reader url: {url}")
 
     if url is None:
         return BaseToolOutput({"error": "No URL"})

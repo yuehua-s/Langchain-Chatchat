@@ -50,6 +50,11 @@ async def handle_user_input(
     if events:
         async for event in events:
             node, response = extract_node_and_response(event)
+
+            # debug
+            print(f"--- node: {node} ---")
+            rich.print(response)
+
             if node == "history_manager":  # history_manager node 为内部实现, 不外显
                 continue
             if node == "article_generation_init_break_point":
@@ -70,7 +75,7 @@ async def handle_user_input(
 
 
 async def update_state(graph: CompiledStateGraph, graph_config: Dict, update_message: Dict):
-    rich.print(update_message)
+    # rich.print(update_message)  # debug
 
     # print("--State before update--")
     # # 使用异步函数来获取状态历史
@@ -161,8 +166,6 @@ def article_generation_repeat_setting():
 
 
 def graph_agent_page(api: ApiRequest, is_lite: bool = False):
-    import rich
-
     # 初始化会话 id
     init_conversation_id()
 
@@ -206,9 +209,17 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
 
     selected_tools_configs = list(selected_tool_configs)
 
+    if st.session_state.selected_graph == "文章生成":
+        graph_name = "article_generation"
+    else:
+        graph_name = "base_graph"
+
     st.title("自媒体文章生成")
     with st.chat_message("assistant"):
-        st.write("Hello 👋, 我是自媒体文章生成 Agent, 试着向我提问.")
+        if graph_name == "article_generation":
+            st.write("Hello 👋, 我是自媒体文章生成 Agent, 输入任意内容以启动工作流.")
+        else:
+            st.write("Hello 👋, 我是智能 Agent, 试着输入任何内容和我聊天呦~ (ps: 可尝试选择工具)")
 
     with bottom():
         cols = st.columns([1, 0.2, 15, 1])
@@ -217,7 +228,10 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         if cols[-1].button(":wastebasket:", help="清空对话"):
             st.session_state["messages"] = []
             st.rerun()
-        user_input = cols[2].chat_input("请输入你的需求. 如: 请你帮我生成一篇自媒体文章.")
+        if graph_name == "article_generation":
+            user_input = cols[2].chat_input("请你帮我生成一篇自媒体文章")
+        else:
+            user_input = cols[2].chat_input("试着和我聊天呦")
 
     # get_tool() 是所有工具的名称和对象的 dict 的列表
     all_tools = get_tool().values()
@@ -236,12 +250,7 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
                               max_tokens=None,
                               temperature=st.session_state["temperature"],
                               stream=True)
-    rich.print(llm)
-
-    if st.session_state.selected_graph == "文章生成":
-        graph_name = "article_generation"
-    else:
-        graph_name = "base_graph"
+    # rich.print(llm)
 
     # 创建 langgraph 实例
     graph = get_graph_instance(
@@ -260,7 +269,7 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         },
     }
 
-    rich.print(graph_config)
+    logger.info(f"graph: '{graph_name}', configurable: '{graph_config}'")
 
     # 绘制流程图
     graph_png_image = graph.get_graph().draw_mermaid_png()
@@ -298,6 +307,7 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         is_article_generation_init_break_point = st.session_state["article_generation_init_break_point"]
         logger.info(f"是否断点: {str(is_article_generation_init_break_point)}")
 
+        # 当客户传入 文章链接 和 图片链接 后, 更新 state, 并让 langgraph 继续往下走
         if st.session_state["article_generation_init_break_point"]:
             update_message = {
                 "article_links": st.session_state["article_links"],

@@ -3,6 +3,10 @@ import multiprocessing as mp
 import os
 import socket
 import sys
+import requests
+import httpx
+import openai
+
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlparse
@@ -19,20 +23,20 @@ from typing import (
     Union,
 )
 
-import httpx
-import openai
 from fastapi import FastAPI
 from langchain.tools import BaseTool
 from langchain_core.embeddings import Embeddings
 from langchain_openai.chat_models import ChatOpenAI
 from langchain_openai.llms import OpenAI
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.checkpoint.postgres import PostgresSaver
 from memoization import cached, CachingAlgorithmFlag
 
 from chatchat.settings import Settings, XF_MODELS_TYPES
 from chatchat.server.pydantic_v2 import BaseModel, Field
 from chatchat.utils import build_logger
-import requests
 
 logger = build_logger()
 
@@ -1034,31 +1038,52 @@ def get_graph_memory():
     return _AGENT_MEMORY
 
 
-def get_st_graph_memory(memory_type: Literal["memory", "sqlite", "postgres", None] = None) -> Any:
-    import sqlalchemy as sa
+# def get_st_graph_memory(memory_type: Literal["memory", "sqlite", "postgres", None] = None) -> Union[MemorySaver, AsyncSqliteSaver, PostgresSaver]:
+#     import sqlalchemy as sa
+#
+#     if memory_type is None:
+#         memory_type = Settings.tool_settings.GRAPH_MEMORY_TYPE
+#
+#     if memory_type == "memory":
+#         from langgraph.checkpoint.memory import MemorySaver
+#         return MemorySaver()
+#     elif memory_type == "sqlite":
+#         import aiosqlite
+#         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+#         conn = aiosqlite.connect("langgraph_checkpoints.sqlite")
+#         return AsyncSqliteSaver(conn)
+#     elif memory_type == "postgres":
+#         from langgraph.checkpoint.postgres import PostgresSaver
+#         engine = sa.create_engine(Settings.basic_settings.SQLALCHEMY_DATABASE_URI)
+#         conn = engine.connect().connection
+#         return PostgresSaver(conn)
+#
+#     raise ValueError("Invalid memory_type provided. Must be 'memory', 'sqlite', or 'postgres'.")
 
+
+def get_st_graph_memory(memory_type: Optional[Literal["memory", "sqlite", "postgres"]] = None) -> Union[
+    MemorySaver,
+    AsyncSqliteSaver,
+    PostgresSaver
+]:
     if memory_type is None:
         memory_type = Settings.tool_settings.GRAPH_MEMORY_TYPE
-    memory_saver = None  # 给 memory_saver 赋一个默认值
 
     if memory_type == "memory":
-        from langgraph.checkpoint.memory import MemorySaver
-        memory_saver = MemorySaver()
+        return MemorySaver()
+
     elif memory_type == "sqlite":
         import aiosqlite
-        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
         conn = aiosqlite.connect("langgraph_checkpoints.sqlite")
-        memory_saver = AsyncSqliteSaver(conn)
+        return AsyncSqliteSaver(conn)
+
     elif memory_type == "postgres":
-        from langgraph.checkpoint.postgres import PostgresSaver
+        import sqlalchemy as sa
         engine = sa.create_engine(Settings.basic_settings.SQLALCHEMY_DATABASE_URI)
         conn = engine.connect().connection
-        memory_saver = PostgresSaver(conn)
+        return PostgresSaver(conn)
 
-    if memory_saver is None:
-        raise ValueError("Invalid memory_type provided. Must be 'memory', 'sqlite', or 'postgres'.")
-
-    return memory_saver
+    raise ValueError("Invalid memory_type provided. Must be 'memory', 'sqlite', or 'postgres'.")
 
 
 if __name__ == "__main__":
