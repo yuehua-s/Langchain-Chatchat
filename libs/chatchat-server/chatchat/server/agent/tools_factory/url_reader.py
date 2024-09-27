@@ -24,7 +24,6 @@ def url_reader(
                         "If the URL is inaccessible or the content cannot be parsed, return an appropriate error message."),
 ):
     """Use this tool to get the clear content of a URL."""
-
     tool_config = get_tool_config("url_reader")
     timeout = tool_config.get("timeout")
 
