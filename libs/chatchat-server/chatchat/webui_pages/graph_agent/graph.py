@@ -96,18 +96,42 @@ def article_generation_repeat_setting():
     )
     llm_model = cols[1].selectbox("模型设置(LLM)", llm_models)
     temperature = cols[2].slider("温度设置(Temperature)", 0.0, 1.0, value=st.session_state["temperature"])
-    article = st.write("当前的文章内容如下: xxxxxxxxxx")
-    prompt = st.text_area("指令(Prompt):", value=st.session_state["prompt"])
+    with st.container(height=300):
+        st.markdown(st.session_state["article"])
+    prompt = st.text_area("指令(Prompt):", value="请继续优化, 最后只需要返回文章内容.")
 
     if st.button("确认-需要重写"):
         st.session_state["platform"] = platform
         st.session_state["llm_model"] = llm_model
         st.session_state["temperature"] = temperature
         st.session_state["prompt"] = prompt
-        st.session_state["break_point"] = True
+        st.session_state["article_generation_repeat_break_point"] = True
+
+        user_input = (f"模型: {llm_model}\n"
+                      f"温度: {temperature}\n"
+                      f"指令: {prompt}")
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        st.session_state.messages.append({"role": "user", "content": user_input})
         st.rerun()
     if st.button("确认-不需要重写"):
-        st.session_state["break_point"] = False
+        # 如果不需要继续改写, 则固定 prompt 如下
+        prompt = "不需要继续改写文章."
+
+        st.session_state["platform"] = platform
+        st.session_state["llm_model"] = llm_model
+        st.session_state["temperature"] = temperature
+        st.session_state["prompt"] = prompt
+        st.session_state["article_generation_repeat_break_point"] = True
+        # langgraph 退出循环的判断条件
+        st.session_state["is_article_generation_complete"] = True
+
+        user_input = (f"模型: {llm_model}\n"
+                      f"温度: {temperature}\n"
+                      f"指令: {prompt}")
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        st.session_state.messages.append({"role": "user", "content": user_input})
         st.rerun()
 
 
@@ -151,6 +175,13 @@ async def handle_user_input(
                     st.session_state.messages.append({"role": "assistant", "content": "请开始下达指令"})
                 st.session_state["article_list"] = response["article_list"]
                 article_generation_start_setting()
+                continue
+            if node == "article_generation_repeat_break_point":
+                with st.chat_message("assistant"):
+                    st.write("请确认是否重写")
+                    st.session_state.messages.append({"role": "assistant", "content": "请确认是否重写"})
+                st.session_state["article"] = response["article"]
+                article_generation_repeat_setting()
                 continue
             # Display assistant response in chat message container
             with st.chat_message("assistant"):
@@ -225,6 +256,8 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         st.session_state["article_generation_start_break_point"] = False
     if "article_generation_repeat_break_point" not in st.session_state:
         st.session_state["article_generation_repeat_break_point"] = False
+    if "is_article_generation_complete" not in st.session_state:
+        st.session_state["is_article_generation_complete"] = False
 
     with st.sidebar:
         tab1, = st.tabs(["工具设置"])
@@ -350,9 +383,11 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         # debug
         is_article_generation_init_break_point = st.session_state["article_generation_init_break_point"]
         is_article_generation_start_break_point = st.session_state["article_generation_start_break_point"]
+        is_article_generation_repeat_break_point = st.session_state["article_generation_repeat_break_point"]
         logger.info(f"断点情况: \n"
                     f"article_generation_init_break_point: {str(is_article_generation_init_break_point)}\n"
-                    f"article_generation_start_break_point: {str(is_article_generation_start_break_point)}")
+                    f"article_generation_start_break_point: {str(is_article_generation_start_break_point)}\n"
+                    f"article_generation_repeat_break_point: {str(is_article_generation_repeat_break_point)}")
 
         # 当客户传入 文章链接 和 图片链接 后, 更新 state, 并让 langgraph 继续往下走
         if st.session_state["article_generation_init_break_point"]:
@@ -386,5 +421,28 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
             asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
             # 后续不再需要进行 爬虫动作, 将 article_generation_init_break_point 状态扭转为 False
             st.session_state["article_generation_start_break_point"] = False
-
-    logger.info("--- end ---")
+        if st.session_state["article_generation_repeat_break_point"]:
+            logger.info("--- article_generation_repeat_break_point ---")
+            if st.session_state["is_article_generation_complete"]:
+                update_message = {
+                    "llm": st.session_state["llm_model"],
+                    "temperature": st.session_state["temperature"],
+                    "user_prompt": st.session_state["prompt"],
+                    "is_article_generation_complete": True,
+                }
+            else:
+                update_message = {
+                    "llm": st.session_state["llm_model"],
+                    "temperature": st.session_state["temperature"],
+                    "user_prompt": st.session_state["prompt"],
+                    "is_article_generation_complete": False,
+                }
+            asyncio.run(update_state(
+                graph=graph,
+                graph_config=graph_config,
+                update_message=update_message,
+                as_node="article_generation_repeat_break_point"
+            ))
+            asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
+            # 将 article_generation_repeat_break_point 状态扭转为 False
+            st.session_state["article_generation_start_break_point"] = False

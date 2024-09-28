@@ -53,7 +53,7 @@ class ArticleGenerationState(TypedDict):
     temperature: Optional[float]  # 选择的 temperature
     article: Optional[str]  # 生成的文章
     user_prompt: Optional[str]  # 用户指令
-    user_feedback: Optional[bool]  # 消息队列
+    is_article_generation_complete: Optional[bool]  # 消息队列
 
 
 # 用来暂停 langgraph, 使得用户传入 待爬文章链接 和 图片链接
@@ -149,6 +149,51 @@ async def article_writer(state: ArticleGenerationState) -> ArticleGenerationStat
     state["messages"].append(AIMessage(content=str(writer_llm_result["article"])))
     state["article"] = writer_llm_result["article"]
     return state
+
+
+async def article_rewriter(state: ArticleGenerationState) -> ArticleGenerationState:
+    rewriter_template = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
+    You are an article-writing robot skilled in creating various types of articles (news, reports, entertainment, sports, technology, etc.). Readers enjoy your writing. I will provide you with a list of article contents. Please process them according to the instructions below.
+
+    Article content:
+    {article}
+
+    Instructions:
+    {user_prompt}
+
+    Final output:
+    Process the articles as instructed and return the results.
+    """
+            ),
+        ]
+    )
+    rewriter_llm = create_agent_models(configs=None,
+                                       model=state["llm"],
+                                       max_tokens=None,
+                                       temperature=state["temperature"],
+                                       stream=True)
+    print("--- rewriter ---")
+    rich.print(rewriter_llm)
+    llm_with_structured_output = rewriter_template | rewriter_llm.with_structured_output(Article)
+    rewriter_llm_result = llm_with_structured_output.invoke(state)
+    # 先把用户的指令追加到 messages 消息队列中
+    state["messages"].append(HumanMessage(content=state["user_prompt"]))
+    state["messages"].append(AIMessage(content=str(rewriter_llm_result["article"])))
+    state["article"] = rewriter_llm_result["article"]
+    return state
+
+
+async def should_continue(state: ArticleGenerationState):
+    # If there is no function call, then we respond to the user
+    if state["is_article_generation_complete"]:
+        return "article_generation_complete"
+    # Otherwise if there is, we continue
+    else:
+        return "article_generation_not_complete"
 
 
 # 用来爬取用户输入的网页文章内容
@@ -273,38 +318,37 @@ def article_generation(llm: ChatOpenAI, tools: list[BaseTool], history_len: int)
 
     graph_builder = StateGraph(ArticleGenerationState)
 
-    llm_with_tools = llm.bind_tools(tools)
-
-    async def agent(state: ArticleGenerationState) -> ArticleGenerationState:
-        messages = llm_with_tools.invoke(state["messages"])
-        state["messages"] = [messages]
-        return state
-
-    tool_node = ToolNode(tools=tools)
     spider_graph = get_spider_graph(llm=llm, memory=memory)
 
-    # graph_builder.add_node("agent", agent)
-    # graph_builder.add_node("tools", tool_node)
     graph_builder.add_node("article_generation_init_break_point", article_generation_init_break_point)
     graph_builder.add_node("url_handler", url_handler)
     graph_builder.add_node("spider", spider_graph)
     graph_builder.add_node("article_generation_start_break_point", article_generation_start_break_point)
     graph_builder.add_node("writer", article_writer)
+    graph_builder.add_node("article_generation_repeat_break_point", article_generation_repeat_break_point)
+    graph_builder.add_node("rewriter", article_rewriter)
 
     graph_builder.set_entry_point("article_generation_init_break_point")
     graph_builder.add_edge("article_generation_init_break_point", "url_handler")
     graph_builder.add_edge("url_handler", "spider")
     graph_builder.add_edge("spider", "article_generation_start_break_point")
     graph_builder.add_edge("article_generation_start_break_point", "writer")
-    # graph_builder.add_conditional_edges(
-    #     "agent",
-    #     tools_condition,
-    # )
-    # graph_builder.add_edge("tools", "agent")
+    graph_builder.add_edge("writer", "article_generation_repeat_break_point")
+    graph_builder.add_edge("article_generation_repeat_break_point", "rewriter")
+    # We now add a conditional edge
+    graph_builder.add_conditional_edges(
+        "rewriter",
+        should_continue,
+        {
+            "article_generation_complete": END,
+            "article_generation_not_complete": "article_generation_repeat_break_point",
+        },
+    )
 
     graph = graph_builder.compile(checkpointer=memory, interrupt_after=[
         "article_generation_init_break_point",
         "article_generation_start_break_point",
+        "article_generation_repeat_break_point",
     ])
 
     return graph
