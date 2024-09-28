@@ -1,14 +1,11 @@
+import rich
 import uuid
 import asyncio
-import rich
 
 import streamlit as st
-from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 from streamlit_extras.bottom_container import bottom
 
-from chatchat.settings import Settings
-from chatchat.server.chat.graph_chat import create_agent_models
 from chatchat.webui_pages.utils import *
 from chatchat.webui_pages.dialogue.dialogue import list_graphs, list_tools
 from chatchat.server.utils import (
@@ -19,6 +16,7 @@ from chatchat.server.utils import (
     get_history_len,
     get_graph_instance,
     get_tool,
+    create_agent_models,
 )
 
 logger = build_logger()
@@ -29,95 +27,7 @@ def init_conversation_id():
         st.session_state["conversation_id"] = str(uuid.uuid4())
 
 
-def extract_node_and_response(data):
-    # 获取第一个键值对，作为 node
-    if not data:
-        raise ValueError("数据为空")
-
-    # 获取第一个键及其对应的值
-    node = next(iter(data))
-    response = data[node]
-
-    return node, response
-
-
-async def handle_user_input(
-        graph_input: Any,
-        graph: CompiledStateGraph,
-        graph_config: Dict,
-):
-    events = graph.astream(input=graph_input, config=graph_config, stream_mode="updates")
-    if events:
-        async for event in events:
-            node, response = extract_node_and_response(event)
-
-            # debug
-            print(f"--- node: {node} ---")
-            rich.print(response)
-
-            if node == "history_manager":  # history_manager node 为内部实现, 不外显
-                continue
-            if node == "article_generation_init_break_point":
-                with st.chat_message("assistant"):
-                    st.write("请进行初始化设置")
-                    st.session_state.messages.append({"role": "assistant", "content": "请进行初始化"})
-                article_generation_init_setting()
-                continue
-            # Display assistant response in chat message container
-            with st.chat_message("assistant"):
-                with st.status(node, expanded=True) as status:
-                    st.json(response, expanded=True)
-                    status.update(
-                        label=node, state="complete", expanded=False
-                    )
-                # Add assistant response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": event})
-
-
-async def update_state(graph: CompiledStateGraph, graph_config: Dict, update_message: Dict):
-    # rich.print(update_message)  # debug
-
-    # print("--State before update--")
-    # # 使用异步函数来获取状态历史
-    # state_history = []
-    # async for state in graph.aget_state_history(graph_config):
-    #     state_history.append(state)
-    # rich.print(state_history)
-
-    # 更新状态
-    await graph.aupdate_state(config=graph_config,
-                              values=update_message,
-                              as_node="article_generation_init_break_point")
-
-    # print("--State after update--")
-    # # 再次打印状态历史
-    # state_history = []
-    # async for state in graph.aget_state_history(graph_config):
-    #     state_history.append(state)
-    # rich.print(state_history)
-
-
-@st.dialog("模型配置", width="large")
-def llm_model_setting():
-    cols = st.columns(3)
-    platforms = ["所有"] + list(get_config_platforms())
-    platform = cols[0].selectbox("模型平台设置(Platform)", platforms)
-    llm_models = list(
-        get_config_models(
-            model_type="llm", platform_name=None if platform == "所有" else platform
-        )
-    )
-    llm_model = cols[1].selectbox("模型设置(LLM)", llm_models)
-    temperature = cols[2].slider("温度设置(Temperature)", 0.0, 1.0, value=st.session_state["temperature"])
-
-    if st.button("确认"):
-        st.session_state["platform"] = platform
-        st.session_state["llm_model"] = llm_model
-        st.session_state["temperature"] = temperature
-        st.rerun()
-
-
-@st.dialog("输入链接", width="large")
+@st.dialog("输入初始化内容", width="large")
 def article_generation_init_setting():
     article_links = st.text_area("文章链接")
     image_links = st.text_area("图片链接")
@@ -130,7 +40,43 @@ def article_generation_init_setting():
 
         user_input = (f"文章链接: {article_links}\n"
                       f"图片链接: {image_links}")
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        st.session_state.messages.append({"role": "user", "content": user_input})
 
+        st.rerun()
+
+
+@st.dialog("开始改写文章", width="large")
+def article_generation_start_setting():
+    cols = st.columns(3)
+    platforms = ["所有"] + list(get_config_platforms())
+    platform = cols[0].selectbox("模型平台设置(Platform)", platforms)
+    llm_models = list(
+        get_config_models(
+            model_type="llm", platform_name=None if platform == "所有" else platform
+        )
+    )
+    llm_model = cols[1].selectbox("模型设置(LLM)", llm_models)
+    temperature = cols[2].slider("温度设置(Temperature)", 0.0, 1.0, value=st.session_state["temperature"])
+    with st.container(height=300):
+        st.markdown(st.session_state["article_list"])
+    prompt = st.text_area("指令(Prompt):", value="1.将上述提供的文章内容列表,各自提炼出提纲;\n"
+                                                 "2.将提纲列表整合成一篇文章的提纲;\n"
+                                                 "3.按照整合后的提纲, 生成一篇新的文章, 字数要求 500字左右;\n"
+                                                 "4.只需要返回最后的文章内容即可.")
+
+    if st.button("开始编写"):
+        st.session_state["platform"] = platform
+        st.session_state["llm_model"] = llm_model
+        st.session_state["temperature"] = temperature
+        st.session_state["prompt"] = prompt
+        # 将 article_generation_start_break_point 状态扭转为 True, 后续将进行 update_state 动作
+        st.session_state["article_generation_start_break_point"] = True
+
+        user_input = (f"模型: {llm_model}\n"
+                      f"温度: {temperature}\n"
+                      f"指令: {prompt}")
         with st.chat_message("user"):
             st.markdown(user_input)
         st.session_state.messages.append({"role": "user", "content": user_input})
@@ -165,6 +111,101 @@ def article_generation_repeat_setting():
         st.rerun()
 
 
+def extract_node_and_response(data):
+    # 获取第一个键值对，作为 node
+    if not data:
+        raise ValueError("数据为空")
+
+    # 获取第一个键及其对应的值
+    node = next(iter(data))
+    response = data[node]
+
+    return node, response
+
+
+async def handle_user_input(
+        graph_input: Any,
+        graph: CompiledStateGraph,
+        graph_config: Dict,
+):
+    events = graph.astream(input=graph_input, config=graph_config, stream_mode="updates")
+    if events:
+        async for event in events:
+            node, response = extract_node_and_response(event)
+
+            # debug
+            print(f"--- node: {node} ---")
+            rich.print(response)
+
+            if node == "history_manager":  # history_manager node 为内部实现, 不外显
+                continue
+            if node == "article_generation_init_break_point":
+                with st.chat_message("assistant"):
+                    st.write("请进行初始化设置")
+                    st.session_state.messages.append({"role": "assistant", "content": "请进行初始化设置"})
+                article_generation_init_setting()
+                continue
+            if node == "article_generation_start_break_point":
+                with st.chat_message("assistant"):
+                    st.write("请开始下达指令")
+                    st.session_state.messages.append({"role": "assistant", "content": "请开始下达指令"})
+                st.session_state["article_list"] = response["article_list"]
+                article_generation_start_setting()
+                continue
+            # Display assistant response in chat message container
+            with st.chat_message("assistant"):
+                with st.status(node, expanded=True) as status:
+                    st.json(response, expanded=True)
+                    status.update(
+                        label=node, state="complete", expanded=False
+                    )
+                # Add assistant response to chat history
+                st.session_state.messages.append({"role": "assistant", "content": event})
+
+
+async def update_state(graph: CompiledStateGraph, graph_config: Dict, update_message: Dict, as_node: str):
+    # rich.print(update_message)  # debug
+
+    # print("--State before update--")
+    # # 使用异步函数来获取状态历史
+    # state_history = []
+    # async for state in graph.aget_state_history(graph_config):
+    #     state_history.append(state)
+    # rich.print(state_history)
+
+    # 更新状态
+    await graph.aupdate_state(config=graph_config,
+                              values=update_message,
+                              as_node=as_node)
+
+    # print("--State after update--")
+    # # 再次打印状态历史
+    # state_history = []
+    # async for state in graph.aget_state_history(graph_config):
+    #     state_history.append(state)
+    # rich.print(state_history)
+
+
+@st.dialog("模型配置", width="large")
+def llm_model_setting():
+    cols = st.columns(3)
+    platforms = ["所有"] + list(get_config_platforms())
+    platform = cols[0].selectbox("模型平台设置(Platform)", platforms)
+    llm_models = list(
+        get_config_models(
+            model_type="llm", platform_name=None if platform == "所有" else platform
+        )
+    )
+    llm_model = cols[1].selectbox("模型设置(LLM)", llm_models)
+    temperature = cols[2].slider("温度设置(Temperature)", 0.0, 1.0, value=st.session_state["temperature"])
+
+    if st.button("确认"):
+        st.session_state["platform"] = platform
+        st.session_state["llm_model"] = llm_model
+        st.session_state["temperature"] = temperature
+        st.rerun()
+
+
 def graph_agent_page(api: ApiRequest, is_lite: bool = False):
     # 初始化会话 id
     init_conversation_id()
@@ -180,6 +221,8 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         st.session_state["prompt"] = ""
     if "article_generation_init_break_point" not in st.session_state:
         st.session_state["article_generation_init_break_point"] = False
+    if "article_generation_start_break_point" not in st.session_state:
+        st.session_state["article_generation_start_break_point"] = False
     if "article_generation_repeat_break_point" not in st.session_state:
         st.session_state["article_generation_repeat_break_point"] = False
 
@@ -304,14 +347,44 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
         asyncio.run(handle_user_input(graph_input=graph_input, graph=graph, graph_config=graph_config))
 
     if graph_name == "article_generation":
+        # debug
         is_article_generation_init_break_point = st.session_state["article_generation_init_break_point"]
-        logger.info(f"是否断点: {str(is_article_generation_init_break_point)}")
+        is_article_generation_start_break_point = st.session_state["article_generation_start_break_point"]
+        logger.info(f"断点情况: \n"
+                    f"article_generation_init_break_point: {str(is_article_generation_init_break_point)}\n"
+                    f"article_generation_start_break_point: {str(is_article_generation_start_break_point)}")
 
         # 当客户传入 文章链接 和 图片链接 后, 更新 state, 并让 langgraph 继续往下走
         if st.session_state["article_generation_init_break_point"]:
+            logger.info("--- article_generation_init_break_point ---")
             update_message = {
                 "article_links": st.session_state["article_links"],
                 "image_links": st.session_state["image_links"],
             }
-            asyncio.run(update_state(graph=graph, graph_config=graph_config, update_message=update_message))
+            asyncio.run(update_state(
+                graph=graph,
+                graph_config=graph_config,
+                update_message=update_message,
+                as_node="article_generation_init_break_point"
+            ))
             asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
+            # 后续不再需要进行 爬虫动作, 将 article_generation_init_break_point 状态扭转为 False
+            st.session_state["article_generation_init_break_point"] = False
+        if st.session_state["article_generation_start_break_point"]:
+            logger.info("--- article_generation_start_break_point ---")
+            update_message = {
+                "llm": st.session_state["llm_model"],
+                "temperature": st.session_state["temperature"],
+                "user_prompt": st.session_state["prompt"],
+            }
+            asyncio.run(update_state(
+                graph=graph,
+                graph_config=graph_config,
+                update_message=update_message,
+                as_node="article_generation_start_break_point"
+            ))
+            asyncio.run(handle_user_input(graph_input=None, graph=graph, graph_config=graph_config))
+            # 后续不再需要进行 爬虫动作, 将 article_generation_init_break_point 状态扭转为 False
+            st.session_state["article_generation_start_break_point"] = False
+
+    logger.info("--- end ---")
