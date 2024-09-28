@@ -31,7 +31,7 @@ def url_reader(
     url_pattern = r'http[s]?://[a-zA-Z0-9./?&=_%#-]+'
     match = re.search(url_pattern, url)
     url = match.group(0) if match else None
-    print(f"url_reader url: {url}")
+    logger.info(f"url_reader url: {url}")
 
     if url is None:
         return BaseToolOutput({"error": "No URL"})

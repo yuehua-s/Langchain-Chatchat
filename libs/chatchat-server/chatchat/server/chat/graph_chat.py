@@ -1,54 +1,26 @@
 import asyncio
 import json
 import uuid
-from typing import AsyncIterable, Any
+from typing import AsyncIterable
 
 from fastapi import Body
-from langchain_openai import ChatOpenAI
 from sse_starlette.sse import EventSourceResponse
 
-from chatchat.settings import Settings
 from chatchat.server.api_server.api_schemas import OpenAIChatOutput
 from chatchat.server.callback_handler.agent_callback_handler import AgentStatus
 from chatchat.server.agent.graphs_factory.graphs_registry import Response, serialize_content
 from chatchat.server.utils import (
     MsgType,
-    get_ChatOpenAI,
     get_tool,
-    get_default_llm,
     get_default_graph,
     build_logger,
     get_graph,
     get_history_len,
     get_recursion_limit,
+    create_agent_models,
 )
 
 logger = build_logger()
-
-
-def create_agent_models(configs: Any,
-                        model: str,
-                        max_tokens: Any,
-                        temperature: float,
-                        stream: Any) -> ChatOpenAI:
-    # Settings.model_settings.LLM_MODEL_CONFIG 数据结构 与 UI 传入 configs 数据结构不同, 故分开处理
-    if not configs:
-        configs = Settings.model_settings.LLM_MODEL_CONFIG
-        agent_configs = configs.get("action_model", {})
-        model = model or agent_configs["model"] or get_default_llm()
-        max_tokens = max_tokens or agent_configs["max_tokens"]
-        # 考虑到不同来源请求时 agent 的表现, temperature 默认最高优先级使用开发组推荐配置(LLM_MODEL_CONFIG.action_model.temperature).
-        # 开发者们如有需要可以将此顺序交换.
-        temperature = agent_configs["temperature"] or temperature
-    else:
-        agent_configs = configs.get("action_model", {})
-        model = model or agent_configs["model"] or get_default_llm()
-        for _, agent_model_config in agent_configs.items():
-            max_tokens = max_tokens or agent_model_config.get("max_tokens")
-            temperature = agent_model_config.get("temperature") or temperature
-
-    return get_ChatOpenAI(model_name=model, temperature=temperature, max_tokens=max_tokens, callbacks=[],
-                          streaming=stream, local_wrap=False)
 
 
 async def graph_chat(
