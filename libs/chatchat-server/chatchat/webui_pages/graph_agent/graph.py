@@ -42,7 +42,11 @@ def article_generation_init_setting():
                       f"图片链接: {image_links}")
         with st.chat_message("user"):
             st.markdown(user_input)
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "type": "text"  # 标识为文本类型
+        })
 
         st.rerun()
 
@@ -79,7 +83,11 @@ def article_generation_start_setting():
                       f"指令: {prompt}")
         with st.chat_message("user"):
             st.markdown(user_input)
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "type": "text"  # 标识为文本类型
+        })
 
         st.rerun()
 
@@ -112,7 +120,11 @@ def article_generation_repeat_setting():
                       f"指令: {prompt}")
         with st.chat_message("user"):
             st.markdown(user_input)
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "type": "text"  # 标识为文本类型
+        })
         st.rerun()
     if st.button("确认-不需要重写"):
         # 如果不需要继续改写, 则固定 prompt 如下
@@ -131,7 +143,11 @@ def article_generation_repeat_setting():
                       f"指令: {prompt}")
         with st.chat_message("user"):
             st.markdown(user_input)
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "type": "text"  # 标识为文本类型
+        })
         st.rerun()
 
 
@@ -166,20 +182,32 @@ async def handle_user_input(
             if node == "article_generation_init_break_point":
                 with st.chat_message("assistant"):
                     st.write("请进行初始化设置")
-                    st.session_state.messages.append({"role": "assistant", "content": "请进行初始化设置"})
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": "请进行初始化设置",
+                        "type": "text"  # 标识为文本类型
+                    })
                 article_generation_init_setting()
                 continue
             if node == "article_generation_start_break_point":
                 with st.chat_message("assistant"):
                     st.write("请开始下达指令")
-                    st.session_state.messages.append({"role": "assistant", "content": "请开始下达指令"})
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": "请开始下达指令",
+                        "type": "text"  # 标识为文本类型
+                    })
                 st.session_state["article_list"] = response["article_list"]
                 article_generation_start_setting()
                 continue
             if node == "article_generation_repeat_break_point":
                 with st.chat_message("assistant"):
                     st.write("请确认是否重写")
-                    st.session_state.messages.append({"role": "assistant", "content": "请确认是否重写"})
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": "请确认是否重写",
+                        "type": "text"  # 标识为文本类型
+                    })
                 st.session_state["article"] = response["article"]
                 article_generation_repeat_setting()
                 continue
@@ -191,7 +219,13 @@ async def handle_user_input(
                         label=node, state="complete", expanded=False
                     )
                 # Add assistant response to chat history
-                st.session_state.messages.append({"role": "assistant", "content": event})
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response,
+                    "node": node,
+                    "expanded": False,
+                    "type": "json"  # 标识为JSON类型
+                })
 
 
 async def update_state(graph: CompiledStateGraph, graph_config: Dict, update_message: Dict, as_node: str):
@@ -241,6 +275,9 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
     # 初始化会话 id
     init_conversation_id()
 
+    # 创建 streamlit 消息缓存
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
     # 初始化模型配置
     if "platform" not in st.session_state:
         st.session_state["platform"] = "所有"
@@ -351,12 +388,17 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
     graph_png_image = graph.get_graph().draw_mermaid_png()
     st.sidebar.image(graph_png_image, caption="工作流流程图", use_column_width=True)
 
-    # 创建 streamlit 消息缓存
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    # 前端存储历史消息(仅作为 st.rerun() 时的 UI 展示)
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            if message["type"] == "json":
+                with st.status(message["node"], expanded=message["expanded"]) as status:
+                    st.json(message["content"], expanded=message["expanded"])
+                    status.update(
+                        label=message["node"], state="complete", expanded=False
+                    )
+            elif message["type"] == "text":
+                st.markdown(message["content"])
 
     if graph_name == "article_generation":
         # 初始化文章和图片信息
@@ -373,7 +415,11 @@ def graph_agent_page(api: ApiRequest, is_lite: bool = False):
     if user_input:
         with st.chat_message("user"):
             st.markdown(user_input)
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "type": "text"  # 标识为文本类型
+        })
 
         # Run the async function in a synchronous context
         graph_input = {"messages": [("user", user_input)]}
